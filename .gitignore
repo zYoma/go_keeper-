@@ -1,0 +1,80 @@
+# Бинарные файлы, созданные компилятором
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Директории сборки
+bin/
+build/
+out/
+
+# Сгенерированные файлы
+*.cgo1.go
+*.cgo2.go
+*.[568vq].go
+*.test
+*.prof
+*.pb.go
+*.pb.gw.go
+
+# Сборочные артефакты
+*.a
+*.o
+*.so
+*.h
+*.c
+
+# Временные файлы редакторов
+*~
+.*.swp
+.*.swo
+.DS_Store
+
+# Директории модуля Go
+vendor/
+
+# Кэш модуля Go
+/go/pkg/mod
+/go/pkg/cache
+
+# Кэш тестов Go
+testdata/
+
+# Логи и временные файлы
+*.log
+*.tmp
+
+# Артефакты IDE
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+*.idea/
+*.sublime-workspace
+*.sublime-project
+
+# Настройки для Docker
+docker-compose.override.yml
+.env
+
+# Бинарные файлы, создаваемые при сборке
+*.out
+*.test
+*.prof
+*.coverprofile
+
+# Кэш зависимостей и билдов
+go.sum
+go.work
+
+# Кэш сборки Go
+*.out
+*.test
+
+# Специфичные для системы файлы
+Thumbs.db
+desktop.ini
+DB.db
