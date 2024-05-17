@@ -3,6 +3,7 @@ package main
 import (
 	"keeper/internal/client/app"
 	"keeper/internal/client/config"
+	"log"
 )
 
 func main() {
@@ -11,6 +12,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	log.SetFlags(0)
 
 	// инициализация приложения
 	application, err := app.New(cfg)

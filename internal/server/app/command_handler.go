@@ -102,6 +102,10 @@ func (s *server) clientProcessing(client *client, recvChan chan *pb.CommandMessa
 				case "1": // GET
 					resultMes, err := s.getUserTitles(username, client, dataTitles)
 					if err != nil {
+						if errors.Is(err, ErrTitlesNotFound) {
+							client.ch <- &pb.CommandMessage{Message: "\nУ вас нет сохраненных данных."}
+							client.state = service.AUTHORIZATE
+						}
 						continue
 					}
 					client.ch <- &pb.CommandMessage{Message: resultMes}

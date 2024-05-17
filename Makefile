@@ -13,6 +13,12 @@ build_client:
 run_client: build_client
 	./$(BINARY_NAME)
 
+test:
+	go test ./...
+
+mock:
+	cd internal && mockery --all && cd -
+	
 proto:
 	protoc \
 	--go_out=. \
