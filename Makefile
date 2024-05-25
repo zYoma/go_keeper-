@@ -1,4 +1,4 @@
-BINARY_NAME=shortener
+BINARY_NAME=keeper
 VERSION=0.0.1
 
 build_server:

@@ -3,8 +3,11 @@ package app
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 	"os/signal"
@@ -17,7 +20,7 @@ import (
 	pb "keeper/proto"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
 )
 
 var ErrActionSelected = errors.New("выбранное действие не доступно")
@@ -51,8 +54,26 @@ func (s *App) Run() error {
 		s.cancel()
 	}()
 
+	// Создание системы сертификатов для проверки сертификата сервера
+	certPool := x509.NewCertPool()
+	ca, err := ioutil.ReadFile(s.cfg.CertPath)
+	if err != nil {
+		log.Printf("Failed to read CA certificate: %v", err)
+		return err
+	}
+	if ok := certPool.AppendCertsFromPEM(ca); !ok {
+		log.Printf("Failed to append CA certificate")
+		return err
+	}
+
+	// Создание конфигурации TLS
+	creds := credentials.NewTLS(&tls.Config{
+		ServerName: "keeper", // Имя вашего сервера, как указано в его сертификате
+		RootCAs:    certPool,
+	})
+
 	// подключаемся к серверу
-	conn, err := grpc.DialContext(s.ctx, s.cfg.ServerAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.DialContext(s.ctx, s.cfg.ServerAddr, grpc.WithTransportCredentials(creds))
 	if err != nil {
 		log.Printf("did not connect: %v", err)
 		return err
@@ -77,7 +98,7 @@ func (s *App) Run() error {
 	switch action {
 	case "1":
 		// Регистрация
-		s.registration(*reader, client)
+		s.registration(*reader, client, stream)
 	case "2":
 		// Вход
 		s.logIn(*reader, client, stream)

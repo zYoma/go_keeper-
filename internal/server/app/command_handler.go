@@ -2,15 +2,23 @@ package app
 
 import (
 	"errors"
+	"fmt"
 	"io"
+	"strings"
 
 	"keeper/internal/logger"
 	"keeper/internal/server/service"
 	pb "keeper/proto"
+
+	"github.com/google/uuid"
 )
 
+func newClient(stream pb.KeeperService_CommandServer) *client {
+	return &client{stream: stream, ch: make(chan *pb.CommandMessage, 100), done: make(chan struct{}), state: service.CONNECTED}
+}
+
 func (s *server) Command(stream pb.KeeperService_CommandServer) error {
-	client := &client{stream: stream, ch: make(chan *pb.CommandMessage, 100), done: make(chan struct{}), state: service.CONNECTED}
+	client := newClient(stream)
 	recvChan := make(chan *pb.CommandMessage)
 	errChan := make(chan error)
 	stopRecvChan := make(chan struct{})
@@ -50,26 +58,27 @@ func (s *server) Command(stream pb.KeeperService_CommandServer) error {
 	}()
 
 	// обрабатываем запросы клиента
-	err := s.clientProcessing(client, recvChan, stopRecvChan, errChan)
+	err := s.clientProcessing(client, recvChan, stopRecvChan, errChan, stream)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (s *server) removeClient(username string) {
+func (s *server) removeClient(clientID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if client, exists := s.clients[username]; exists {
+	if client, exists := s.clients[clientID]; exists {
 		close(client.done) // Останавливаем горутину клиента
 		close(client.ch)   // Закрываем канал клиента
-		delete(s.clients, username)
-		logger.Log.Sugar().Infof("%s disconnected", username)
+		delete(s.clients, clientID)
+		logger.Log.Sugar().Infof("%s disconnected", clientID)
 	}
 }
 
-func (s *server) clientProcessing(client *client, recvChan chan *pb.CommandMessage, stopRecvChan chan struct{}, errChan chan error) error {
+func (s *server) clientProcessing(client *client, recvChan chan *pb.CommandMessage, stopRecvChan chan struct{}, errChan chan error, stream pb.KeeperService_CommandServer) error {
 	var username string
+	var clientID string
 	var createdType service.DataType
 	dataTitles := make(map[string]string)
 
@@ -84,7 +93,9 @@ func (s *server) clientProcessing(client *client, recvChan chan *pb.CommandMessa
 			if username == "" {
 				s.mu.Lock()
 				username = msg.Username
-				s.clients[username] = client
+				// Генерация уникального идентификатора
+				clientID = username + "::" + uuid.NewString()
+				s.clients[clientID] = client
 				client.state = service.AUTHORIZATE
 				s.mu.Unlock()
 				logger.Log.Sugar().Infof("%s connected", username)
@@ -138,9 +149,11 @@ func (s *server) clientProcessing(client *client, recvChan chan *pb.CommandMessa
 					client.ch <- &pb.CommandMessage{Message: "\nВведите данны по шаблону: [название]::[номер карты]::[срок действия]::[владелец карты]::[cvv]"}
 					client.state = service.CREATE_DATA
 					createdType = service.CARD
+				default:
+					client.ch <- &pb.CommandMessage{Message: "\nВыбрано не cуществующее днйствие!\nЧто хотите создать:\n1) логин/пароль\n2) текстовые данные\n3) банковскую карту"}
 				}
 			case service.CREATE_DATA:
-				err := s.createData(msg.Message, username, createdType)
+				title, err := s.createData(msg.Message, username, createdType)
 				if err != nil {
 					if errors.Is(err, ErrCreateFormat) {
 						client.ch <- &pb.CommandMessage{Message: "\nНе верный формат данных."}
@@ -150,16 +163,37 @@ func (s *server) clientProcessing(client *client, recvChan chan *pb.CommandMessa
 
 				client.ch <- &pb.CommandMessage{Message: "\nДанные записаны!"}
 				client.state = service.AUTHORIZATE
+				go s.broadcastMessage(username, clientID, title)
 			}
 
 		case err := <-errChan:
 			close(stopRecvChan)
 			if err == io.EOF {
-				s.removeClient(username)
+				s.removeClient(clientID)
 				return nil
 			}
-			s.removeClient(username)
+			s.removeClient(clientID)
 			return err
+		}
+	}
+}
+
+func (s *server) broadcastMessage(username string, id string, title string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for clientID, client := range s.clients {
+		var n string
+		parts := strings.Split(clientID, "::")
+		n, _ = parts[0], parts[1]
+
+		if n == username && clientID != id {
+			err := client.stream.Send(&pb.CommandMessage{
+				Username: "server",
+				Message:  fmt.Sprintf("ОБНОВЛЕНИЕ! Новая запись: %s", title),
+			})
+			if err != nil {
+				logger.Log.Sugar().Errorf("Error sending message to %s: %v", n, err)
+			}
 		}
 	}
 }

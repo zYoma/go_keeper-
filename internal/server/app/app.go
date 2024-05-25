@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 )
 
 type client struct {
@@ -61,13 +62,20 @@ func New(cfg *config.Config) (*server, error) {
 }
 
 func (s *server) Run() error {
+	// Загрузка сертификата сервера и закрытого ключа
+	creds, err := credentials.NewServerTLSFromFile(s.cfg.CertPath, s.cfg.CertKeyPath)
+	if err != nil {
+		logger.Log.Sugar().Errorf("Failed to generate credentials: %v", err)
+		return ErrServerStart
+	}
+
 	lis, err := net.Listen("tcp", s.cfg.RunAddr)
 	if err != nil {
 		logger.Log.Sugar().Errorf("failed to listen: %v", err)
 		return ErrServerStart
 	}
 
-	gs := grpc.NewServer()
+	gs := grpc.NewServer(grpc.Creds(creds))
 	pb.RegisterKeeperServiceServer(gs, s)
 
 	// Создание канала для ошибок

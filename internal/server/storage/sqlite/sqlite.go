@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"keeper/internal/logger"
 	"keeper/internal/server/config"
 	"keeper/internal/server/service"
@@ -35,12 +36,12 @@ var (
 
 // Storage реализует интерфейс StorageProvider и предоставляет методы для работы с хранилищем URL.
 type Storage struct {
-	db    *sql.DB    // Соединение с базой данных.
-	mutex sync.Mutex // Мьютекс для синхронизации доступа к базе данных.
+	db   *sql.DB // Соединение с базой данных.
+	once sync.Once
 }
 
 // New инициализирует новый экземпляр Storage с подключением к базе данных, указанной в конфигурации.
-func NewProvider(cfg *config.Config) (storage.StorageProvider, error) {
+func NewProvider(cfg *config.Config) (storage.Provider, error) {
 	db, err := sql.Open("sqlite3", cfg.DSN)
 	if err != nil {
 		logger.Log.Sugar().Errorf("Не удалось подключиться к БД: %s", err)
@@ -57,61 +58,61 @@ func NewProvider(cfg *config.Config) (storage.StorageProvider, error) {
 
 // Init выполняет инициализацию хранилища, включая создание необходимых таблиц.
 func (s *Storage) Init() error {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	ctx := context.Background()
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		logger.Log.Sugar().Errorf("Не удалось создать таблицу: %s", err)
-		return ErrCreateTable
-	}
-
-	defer func() {
-		if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
-			logger.Log.Sugar().Errorf("Ошибка при откате транзакции: %v", err)
+	var initErr error
+	s.once.Do(func() {
+		ctx := context.Background()
+		tx, err := s.db.BeginTx(ctx, nil)
+		if err != nil {
+			initErr = fmt.Errorf("не удалось создать таблицу: %v", err)
+			return
 		}
-	}()
 
-	_, err = tx.ExecContext(ctx, `
-        CREATE TABLE IF NOT EXISTS users (
-            username VARCHAR(255) PRIMARY KEY,
-            password_hash TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-    `)
-	if err != nil {
-		logger.Log.Sugar().Errorf("Ошибка при создании таблицы users: %s", err)
-		return ErrCreateTable
-	}
+		defer func() {
+			if err := tx.Rollback(); err != nil && err != sql.ErrTxDone {
+				logger.Log.Sugar().Errorf("Ошибка при откате транзакции: %v", err)
+			}
+		}()
 
-	_, err = tx.ExecContext(ctx, `
-        CREATE TABLE IF NOT EXISTS user_data (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title VARCHAR(50) NOT NULL,
-            username VARCHAR(255) REFERENCES users(username) ON DELETE CASCADE,
-            data_type INTEGER NOT NULL,
-            data TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-    `)
-	if err != nil {
-		logger.Log.Sugar().Errorf("Ошибка при создании таблицы user_data: %s", err)
-		return ErrCreateTable
-	}
+		_, err = tx.ExecContext(ctx, `
+            CREATE TABLE IF NOT EXISTS users (
+                username VARCHAR(255) PRIMARY KEY,
+                password_hash TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `)
+		if err != nil {
+			initErr = fmt.Errorf("ошибка при создании таблицы users: %v", err)
+			return
+		}
 
-	_, err = tx.ExecContext(ctx, `CREATE UNIQUE INDEX IF NOT EXISTS idx_title_username_unique ON user_data(title, username);`)
-	if err != nil {
-		logger.Log.Sugar().Errorf("Ошибка при создании индекса: %s", err)
-		return ErrCreateTable
-	}
+		_, err = tx.ExecContext(ctx, `
+            CREATE TABLE IF NOT EXISTS user_data (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title VARCHAR(50) NOT NULL,
+                username VARCHAR(255) REFERENCES users(username) ON DELETE CASCADE,
+                data_type INTEGER NOT NULL,
+                data TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `)
+		if err != nil {
+			initErr = fmt.Errorf("ошибка при создании таблицы user_data: %v", err)
+			return
+		}
 
-	if err := tx.Commit(); err != nil {
-		logger.Log.Sugar().Errorf("Ошибка при коммите транзакции: %s", err)
-		return ErrCreateTable
-	}
+		_, err = tx.ExecContext(ctx, `CREATE UNIQUE INDEX IF NOT EXISTS idx_title_username_unique ON user_data(title, username);`)
+		if err != nil {
+			initErr = fmt.Errorf("ошибка при создании индекса: %v", err)
+			return
+		}
 
-	return nil
+		if err := tx.Commit(); err != nil {
+			initErr = fmt.Errorf("ошибка при коммите транзакции: %v", err)
+			return
+		}
+	})
+
+	return initErr
 }
 
 func (s *Storage) CreateUser(ctx context.Context, username string, password string) error {

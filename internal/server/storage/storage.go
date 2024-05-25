@@ -5,10 +5,6 @@ import (
 	"keeper/internal/server/service"
 )
 
-type StorageProvider interface {
-	Provider
-}
-
 type Provider interface {
 	Init() error
 	CreateUser(ctx context.Context, username string, password string) error

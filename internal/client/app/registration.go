@@ -27,7 +27,7 @@ func getCredentials(reader bufio.Reader) (string, string, error) {
 	return username, password, nil
 }
 
-func (s *App) registration(reader bufio.Reader, client pb.KeeperServiceClient) error {
+func (s *App) registration(reader bufio.Reader, client pb.KeeperServiceClient, stream pb.KeeperService_CommandClient) error {
 	username, password, err := getCredentials(reader)
 	if err != nil {
 		return err
@@ -39,6 +39,8 @@ func (s *App) registration(reader bufio.Reader, client pb.KeeperServiceClient) e
 		log.Printf("registration failed: %v", err)
 		return err
 	}
-	fmt.Println("Registration response:", resp.Message)
+	fmt.Println(resp.Message)
+
+	s.startSession(username, stream)
 	return nil
 }

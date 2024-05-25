@@ -22,8 +22,14 @@ func (s *App) logIn(reader bufio.Reader, client pb.KeeperServiceClient, stream p
 	}
 	fmt.Println(resp.Message)
 
+	s.startSession(username, stream)
+	return nil
+}
+
+func (s *App) startSession(username string, stream pb.KeeperService_CommandClient) error {
+
 	// Отправка начального сообщения для инициализации
-	err = s.send(stream, username, "/init")
+	err := s.send(stream, username, "/init")
 	if err != nil {
 		return err
 	}

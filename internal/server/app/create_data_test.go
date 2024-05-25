@@ -28,7 +28,7 @@ func TestCreateData(t *testing.T) {
 		dataType := service.PASSWORD
 		mockProvider.On("CreateData", mock.Anything, username, "title", mock.Anything, mock.Anything).Return(nil)
 
-		err := server.createData(msg, username, dataType)
+		_, err := server.createData(msg, username, dataType)
 		assert.NoError(t, err)
 
 		mockProvider.AssertExpectations(t)
@@ -40,7 +40,7 @@ func TestCreateData(t *testing.T) {
 		dataType := service.TEXT
 		mockProvider.On("CreateData", mock.Anything, username, "title", mock.Anything, mock.Anything).Return(nil)
 
-		err := server.createData(msg, username, dataType)
+		_, err := server.createData(msg, username, dataType)
 		assert.NoError(t, err)
 
 		mockProvider.AssertExpectations(t)
@@ -52,7 +52,7 @@ func TestCreateData(t *testing.T) {
 		dataType := service.CARD
 		mockProvider.On("CreateData", mock.Anything, username, "title", mock.Anything, mock.Anything).Return(nil)
 
-		err := server.createData(msg, username, dataType)
+		_, err := server.createData(msg, username, dataType)
 		assert.NoError(t, err)
 
 		mockProvider.AssertExpectations(t)
@@ -63,7 +63,7 @@ func TestCreateData(t *testing.T) {
 		msg := "title::login"
 		dataType := service.PASSWORD
 
-		err := server.createData(msg, username, dataType)
+		_, err := server.createData(msg, username, dataType)
 		assert.Error(t, err)
 		assert.Equal(t, ErrCreateFormat, err)
 	})
@@ -73,7 +73,7 @@ func TestCreateData(t *testing.T) {
 		dataType := service.PASSWORD
 		mockProvider.On("CreateData", mock.Anything, username, "title", dataType, mock.Anything).Return(errors.New("provider error"))
 
-		err := server.createData(msg, username, dataType)
+		_, err := server.createData(msg, username, dataType)
 		assert.Error(t, err)
 		assert.Equal(t, "provider error", err.Error())
 

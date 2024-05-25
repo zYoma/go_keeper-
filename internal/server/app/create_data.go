@@ -10,7 +10,7 @@ import (
 
 var ErrCreateFormat = errors.New("incorrect data format")
 
-func (s *server) createData(msg string, username string, createdType service.DataType) error {
+func (s *server) createData(msg string, username string, createdType service.DataType) (string, error) {
 	var partsCount int
 	switch createdType {
 	case service.PASSWORD:
@@ -24,7 +24,7 @@ func (s *server) createData(msg string, username string, createdType service.Dat
 	// разбиваем полученные данные по разделителю
 	parts := strings.Split(msg, "::")
 	if len(parts) != partsCount {
-		return ErrCreateFormat
+		return "", ErrCreateFormat
 	}
 
 	createDataMap := make(map[string]string)
@@ -54,20 +54,20 @@ func (s *server) createData(msg string, username string, createdType service.Dat
 	createDataJson, err := json.Marshal(createDataMap)
 	if err != nil {
 		logger.Log.Sugar().Errorf("Error marshalling map to JSON: %v", err)
-		return err
+		return "", err
 	}
 
 	// шифруем данные
 	cipherText, err := service.Encrypt(string(createDataJson), s.cfg.Secret)
 	if err != nil {
 		logger.Log.Sugar().Errorf("Encryption error: %v\n", err)
-		return err
+		return "", err
 	}
 
 	// сохраняем данные
 	err = s.provider.CreateData(s.ctx, username, title, service.PASSWORD, cipherText)
 	if err != nil {
-		return err
+		return "", err
 	}
-	return nil
+	return title, nil
 }
