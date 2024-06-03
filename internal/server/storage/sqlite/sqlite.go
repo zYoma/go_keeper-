@@ -92,7 +92,6 @@ func (s *Storage) Init() error {
                 username VARCHAR(255) REFERENCES users(username) ON DELETE CASCADE,
                 data_type INTEGER NOT NULL,
                 data TEXT NOT NULL,
-				meta TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         `)
