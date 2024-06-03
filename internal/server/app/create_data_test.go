@@ -24,7 +24,7 @@ func TestCreateData(t *testing.T) {
 	username := "testuser"
 
 	t.Run("successful password creation", func(t *testing.T) {
-		msg := "title::login::password"
+		msg := "title::login::password::metadata"
 		dataType := service.PASSWORD
 		mockProvider.On("CreateData", mock.Anything, username, "title", mock.Anything, mock.Anything).Return(nil)
 
@@ -36,7 +36,7 @@ func TestCreateData(t *testing.T) {
 	})
 
 	t.Run("successful text creation", func(t *testing.T) {
-		msg := "title::text"
+		msg := "title::text::metadata"
 		dataType := service.TEXT
 		mockProvider.On("CreateData", mock.Anything, username, "title", mock.Anything, mock.Anything).Return(nil)
 
@@ -48,7 +48,7 @@ func TestCreateData(t *testing.T) {
 	})
 
 	t.Run("successful card creation", func(t *testing.T) {
-		msg := "title::cardnum::expdate::owner::cvv"
+		msg := "title::cardnum::expdate::owner::cvv::metadata"
 		dataType := service.CARD
 		mockProvider.On("CreateData", mock.Anything, username, "title", mock.Anything, mock.Anything).Return(nil)
 
@@ -69,7 +69,7 @@ func TestCreateData(t *testing.T) {
 	})
 
 	t.Run("provider error", func(t *testing.T) {
-		msg := "title::login::password"
+		msg := "title::login::password::metadata"
 		dataType := service.PASSWORD
 		mockProvider.On("CreateData", mock.Anything, username, "title", dataType, mock.Anything).Return(errors.New("provider error"))
 

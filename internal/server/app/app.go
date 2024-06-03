@@ -140,3 +140,20 @@ func (s *server) Shutdown(gs *grpc.Server) {
 		gs.Stop()
 	}
 }
+
+func (s *server) loadClientsFromDB() error {
+	clients, err := s.provider.GetAllClients(s.ctx)
+	if err != nil {
+		return err
+	}
+
+	for _, clientData := range clients {
+		client := &client{
+			ch:    make(chan *pb.CommandMessage, 100),
+			done:  make(chan struct{}),
+			state: service.State(clientData.State),
+		}
+		s.addClient(clientData.Username, clientData.ClientID, client)
+	}
+	return nil
+}

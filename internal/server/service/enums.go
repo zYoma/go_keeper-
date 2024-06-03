@@ -6,7 +6,6 @@ type State int
 // Определение возможных состояний с использованием iota
 const (
 	CONNECTED State = iota
-	AUTHORIZATE
 	SELECT_ACTION
 	GET_DATA
 	CHOSE_CREATE_DATA
@@ -18,5 +17,6 @@ type DataType int
 const (
 	PASSWORD DataType = iota
 	TEXT
+	BYTE
 	CARD
 )

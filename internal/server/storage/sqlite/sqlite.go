@@ -92,11 +92,25 @@ func (s *Storage) Init() error {
                 username VARCHAR(255) REFERENCES users(username) ON DELETE CASCADE,
                 data_type INTEGER NOT NULL,
                 data TEXT NOT NULL,
+				meta TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         `)
 		if err != nil {
 			initErr = fmt.Errorf("ошибка при создании таблицы user_data: %v", err)
+			return
+		}
+
+		_, err = tx.ExecContext(ctx, `
+			CREATE TABLE IF NOT EXISTS clients (
+				client_id TEXT PRIMARY KEY,
+				username TEXT,
+				state INTEGER,
+				connected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+			);
+        `)
+		if err != nil {
+			initErr = fmt.Errorf("ошибка при создании таблицы clients: %v", err)
 			return
 		}
 
@@ -224,4 +238,41 @@ func (s *Storage) CreateData(ctx context.Context, username string, title string,
 	}
 
 	return nil
+}
+
+func (s *Storage) AddClient(ctx context.Context, clientID, username string, state service.State) error {
+	query := `INSERT INTO clients (client_id, username, state) VALUES (?, ?, ?)`
+	_, err := s.db.ExecContext(ctx, query, clientID, username, state)
+	return err
+}
+
+func (s *Storage) UpdateClientState(ctx context.Context, clientID string, state service.State) error {
+	query := `UPDATE clients SET state = ? WHERE client_id = ?`
+	_, err := s.db.ExecContext(ctx, query, state, clientID)
+	return err
+}
+
+func (s *Storage) RemoveClient(ctx context.Context, clientID string) error {
+	query := `DELETE FROM clients WHERE client_id = ?`
+	_, err := s.db.ExecContext(ctx, query, clientID)
+	return err
+}
+
+func (s *Storage) GetAllClients(ctx context.Context) ([]storage.Client, error) {
+	query := `SELECT client_id, username, state FROM clients`
+	rows, err := s.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var clients []storage.Client
+	for rows.Next() {
+		var client storage.Client
+		if err := rows.Scan(&client.ClientID, &client.Username, &client.State); err != nil {
+			return nil, err
+		}
+		clients = append(clients, client)
+	}
+	return clients, nil
 }

@@ -72,7 +72,22 @@ func (s *server) removeClient(clientID string) {
 		close(client.done) // Останавливаем горутину клиента
 		close(client.ch)   // Закрываем канал клиента
 		delete(s.clients, clientID)
+
+		err := s.provider.RemoveClient(s.ctx, clientID)
+		if err != nil {
+			logger.Log.Sugar().Errorf("Failed to remove client from DB: %v", err)
+		}
+
 		logger.Log.Sugar().Infof("%s disconnected", clientID)
+	}
+}
+
+func (s *server) addClient(username string, clientID string, client *client) {
+
+	s.clients[clientID] = client
+	err := s.provider.AddClient(s.ctx, clientID, username, client.state)
+	if err != nil {
+		logger.Log.Sugar().Errorf("Failed to add client to DB: %v", err)
 	}
 }
 
@@ -95,8 +110,7 @@ func (s *server) clientProcessing(client *client, recvChan chan *pb.CommandMessa
 				username = msg.Username
 				// Генерация уникального идентификатора
 				clientID = username + "::" + uuid.NewString()
-				s.clients[clientID] = client
-				client.state = service.AUTHORIZATE
+				s.addClient(username, clientID, client)
 				s.mu.Unlock()
 				logger.Log.Sugar().Infof("%s connected", username)
 			}
@@ -105,9 +119,12 @@ func (s *server) clientProcessing(client *client, recvChan chan *pb.CommandMessa
 
 			// машина состояний
 			switch client.state {
-			case service.AUTHORIZATE:
+			case service.CONNECTED:
 				client.ch <- &pb.CommandMessage{Message: "\nВыбирете действие:\n1) GET\n2) CREATE"}
-				client.state = service.SELECT_ACTION
+				err := s.updateState(client, clientID, service.SELECT_ACTION)
+				if err != nil {
+					continue
+				}
 			case service.SELECT_ACTION:
 				switch msg.Message {
 				case "1": // GET
@@ -115,15 +132,24 @@ func (s *server) clientProcessing(client *client, recvChan chan *pb.CommandMessa
 					if err != nil {
 						if errors.Is(err, ErrTitlesNotFound) {
 							client.ch <- &pb.CommandMessage{Message: "\nУ вас нет сохраненных данных."}
-							client.state = service.AUTHORIZATE
+							err := s.updateState(client, clientID, service.CONNECTED)
+							if err != nil {
+								continue
+							}
 						}
 						continue
 					}
 					client.ch <- &pb.CommandMessage{Message: resultMes}
-					client.state = service.GET_DATA
+					err = s.updateState(client, clientID, service.GET_DATA)
+					if err != nil {
+						continue
+					}
 				case "2": // CREATE
-					client.ch <- &pb.CommandMessage{Message: "\nЧто хотите создать:\n1) логин/пароль\n2) текстовые данные\n3) банковскую карту"}
-					client.state = service.CHOSE_CREATE_DATA
+					client.ch <- &pb.CommandMessage{Message: "\nЧто хотите создать:\n1) логин/пароль\n2) текстовые данные\n3) банковскую карту\n4) бинарные данные"}
+					err := s.updateState(client, clientID, service.CHOSE_CREATE_DATA)
+					if err != nil {
+						continue
+					}
 				}
 			case service.GET_DATA:
 				if title, ok := dataTitles[msg.Message]; ok {
@@ -132,23 +158,42 @@ func (s *server) clientProcessing(client *client, recvChan chan *pb.CommandMessa
 						continue
 					}
 					client.ch <- &pb.CommandMessage{Message: data}
-					client.state = service.AUTHORIZATE
+					err = s.updateState(client, clientID, service.CONNECTED)
+					if err != nil {
+						continue
+					}
 					dataTitles = make(map[string]string)
 				}
 			case service.CHOSE_CREATE_DATA:
 				switch msg.Message {
 				case "1": // пароли
-					client.ch <- &pb.CommandMessage{Message: "\nВведите данны по шаблону: [название]::[логин]::[пароль]"}
-					client.state = service.CREATE_DATA
+					client.ch <- &pb.CommandMessage{Message: "\nВведите данны по шаблону: [название]::[логин]::[пароль]::[метадата]"}
+					err := s.updateState(client, clientID, service.CREATE_DATA)
+					if err != nil {
+						continue
+					}
 					createdType = service.PASSWORD
 				case "2": // текст
-					client.ch <- &pb.CommandMessage{Message: "\nВведите данны по шаблону: [название]::[данные]"}
-					client.state = service.CREATE_DATA
+					client.ch <- &pb.CommandMessage{Message: "\nВведите данны по шаблону: [название]::[данные]::[метадата]"}
+					err := s.updateState(client, clientID, service.CREATE_DATA)
+					if err != nil {
+						continue
+					}
 					createdType = service.TEXT
 				case "3": // карта
-					client.ch <- &pb.CommandMessage{Message: "\nВведите данны по шаблону: [название]::[номер карты]::[срок действия]::[владелец карты]::[cvv]"}
-					client.state = service.CREATE_DATA
+					client.ch <- &pb.CommandMessage{Message: "\nВведите данны по шаблону: [название]::[номер карты]::[срок действия]::[владелец карты]::[cvv]::[метадата]"}
+					err := s.updateState(client, clientID, service.CREATE_DATA)
+					if err != nil {
+						continue
+					}
 					createdType = service.CARD
+				case "4": // бинарные данные
+					client.ch <- &pb.CommandMessage{Message: "\nВведите данны по шаблону: [название]::[данные]::[метадата]"}
+					err := s.updateState(client, clientID, service.CREATE_DATA)
+					if err != nil {
+						continue
+					}
+					createdType = service.BYTE
 				default:
 					client.ch <- &pb.CommandMessage{Message: "\nВыбрано не cуществующее днйствие!\nЧто хотите создать:\n1) логин/пароль\n2) текстовые данные\n3) банковскую карту"}
 				}
@@ -162,7 +207,10 @@ func (s *server) clientProcessing(client *client, recvChan chan *pb.CommandMessa
 				}
 
 				client.ch <- &pb.CommandMessage{Message: "\nДанные записаны!"}
-				client.state = service.AUTHORIZATE
+				err = s.updateState(client, clientID, service.CONNECTED)
+				if err != nil {
+					continue
+				}
 				go s.broadcastMessage(username, clientID, title)
 			}
 
@@ -187,13 +235,35 @@ func (s *server) broadcastMessage(username string, id string, title string) {
 		n, _ = parts[0], parts[1]
 
 		if n == username && clientID != id {
-			err := client.stream.Send(&pb.CommandMessage{
+			msg := &pb.CommandMessage{
 				Username: "server",
 				Message:  fmt.Sprintf("ОБНОВЛЕНИЕ! Новая запись: %s", title),
-			})
+			}
+
+			err := client.stream.Send(msg)
 			if err != nil {
 				logger.Log.Sugar().Errorf("Error sending message to %s: %v", n, err)
+
+				// Делаем две дополнительные попытки переотправки
+				maxRetries := 2
+				for retries := 0; retries < maxRetries; retries++ {
+					err = client.stream.Send(msg)
+					if err == nil {
+						break
+					}
+					logger.Log.Sugar().Errorf("Retry %d: Error sending message to %s: %v", retries+1, n, err)
+				}
 			}
 		}
 	}
+}
+
+func (s *server) updateState(client *client, clientID string, state service.State) error {
+	client.state = state
+	err := s.provider.UpdateClientState(s.ctx, clientID, service.SELECT_ACTION)
+	if err != nil {
+		logger.Log.Sugar().Errorf("Failed to update client state: %v", err)
+		return err
+	}
+	return nil
 }

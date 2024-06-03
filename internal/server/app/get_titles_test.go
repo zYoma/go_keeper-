@@ -22,7 +22,7 @@ func TestGetUserTitles(t *testing.T) {
 	dataTitles := make(map[string]string)
 	client := &client{
 		ch:    make(chan *pb.CommandMessage, 1),
-		state: service.AUTHORIZATE,
+		state: service.CONNECTED,
 	}
 
 	t.Run("no saved data", func(t *testing.T) {
@@ -44,7 +44,7 @@ func TestGetUserTitles(t *testing.T) {
 		message, err := server.getUserTitles(username, client, dataTitles)
 		assert.NoError(t, err)
 		assert.NotEqual(t, "", message)
-		assert.Equal(t, service.AUTHORIZATE, client.state) // state should not change in this case
+		assert.Equal(t, service.CONNECTED, client.state) // state should not change in this case
 
 		expectedMessage := "\nЧто хотите получить:\n1) Title 1\n2) Title 2\n3) Title 3\n"
 		assert.Equal(t, expectedMessage, message)
@@ -64,7 +64,7 @@ func TestGetUserTitles(t *testing.T) {
 		message, err := server.getUserTitles(username, client, dataTitles)
 		assert.Error(t, err)
 		assert.Equal(t, "", message)
-		assert.Equal(t, service.AUTHORIZATE, client.state) // state should not change in this case
+		assert.Equal(t, service.CONNECTED, client.state) // state should not change in this case
 
 		mockProvider.AssertExpectations(t)
 		mockProvider.ExpectedCalls = nil
